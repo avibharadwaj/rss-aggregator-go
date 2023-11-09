@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/avibharadwaj/rss-aggregator/internal/database"
 	"github.com/go-chi/chi"
@@ -20,6 +21,7 @@ type apiConfig struct {
 
 func main() {
 	fmt.Println("---rss aggregator---")
+
 	godotenv.Load(".env") //Takes env variables from .env file and pulls them into curr environment.
 	portString := os.Getenv("PORT")
 
@@ -36,10 +38,12 @@ func main() {
 	if err != nil {
 		log.Fatal("Can't connect to database:", err)
 	}
-
+	db := database.New(conn)
 	apiCfg := apiConfig{
-		DB: database.New(conn),
+		DB: db,
 	}
+
+	go startScraping(db, 10, time.Minute)
 
 	router := chi.NewRouter() //create a new router object to start making our server
 
@@ -65,6 +69,8 @@ func main() {
 	v1Router.Get("/feed_follows", apiCfg.middlewareAuth(apiCfg.handlerGetFeedFollows))
 	v1Router.Delete("/feed_follows/{feedFollowID}", apiCfg.middlewareAuth(apiCfg.handlerDeleteFeedFollow))
 
+	v1Router.Get("/posts", apiCfg.middlewareAuth(apiCfg.handlerGetPostsForUser))
+
 	router.Mount("/v1", v1Router) //nesting for different handlers
 
 	srv := &http.Server{
@@ -73,6 +79,7 @@ func main() {
 	}
 
 	log.Printf("Server starting on Port %v", portString)
+
 	err = srv.ListenAndServe()
 
 	if err != nil {
